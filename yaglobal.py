@@ -1,6 +1,7 @@
 import threading
 from classes.regexblocking import RegexBlocking
 
+
 def init():
     # declaration
     global lock

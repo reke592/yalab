@@ -1,9 +1,10 @@
 import threading
 import time
 from dnslib import RCODE, DNSRecord, DNSHeader, DNSQuestion, RR, A, server
-from globals import blacklist, DNS_PORT, DNS_FORWARDER, DNS_HOST, EVENT_APPLY_UPDATES, EVENT_STOP_DNS_SERVICE
+from yaglobal import blacklist, DNS_PORT, DNS_FORWARDER, DNS_HOST, EVENT_APPLY_UPDATES, EVENT_STOP_DNS_SERVICE
 
 # NOTE: blacklist is READONLY, blacklist updates MUST be handled in services/blacklistd thread
+
 
 class LocalResolver:
     def resolve(self, request, handler):
@@ -11,24 +12,17 @@ class LocalResolver:
         q = request.get_q()
         q_name = str(q.qname)
         client_addr = handler.client_address[0]
-        
+
         if blacklist.check(client_addr, q_name):
             d.header.rcode = RCODE.NXDOMAIN
             d.add_answer(RR(q_name, ttl=10, rdata=A('0.0.0.0')))
-            # d.add_answer(DNSRecord(
-            #     DNSHeader(aa=1,ra=1,qr=1),
-            #     q=DNSQuestion(q_name),
-            #     a=)
-            # ))
-            
-            # d.add_answer(RR(q_name, ttl=10))
-            # d.add_answer(RR(q_name, ttl=10))
         else:
             a = DNSRecord.parse(DNSRecord.question(
                 q_name).send(DNS_FORWARDER, DNS_PORT))
             for rr in a.rr:
                 d.add_answer(rr)
         return d
+
 
 def service():
     global blacklist_count
@@ -50,6 +44,7 @@ def service():
         time.sleep(1)
     s.stop()
     print('stopped yalabdns service')
+
 
 def Server():
     return threading.Thread(target=service, name='yalabdns', daemon=True)

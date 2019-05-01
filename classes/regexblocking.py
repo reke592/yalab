@@ -2,6 +2,8 @@ from classes.blacklist import Blacklist
 import re
 
 # blacklist: regex blocking
+
+
 class RegexBlocking(Blacklist):
     def _after_init(self):
         self.compile()
@@ -11,9 +13,10 @@ class RegexBlocking(Blacklist):
         for key in self.db.keys():
             if self.db[key]:
                 listed.append(key)
-        print('compiling', len(listed))
-        pattern = '(^|.*\.)({0})'.format('|'.join(listed))
-        setattr(self, 'pattern', re.compile(pattern))
+        if len(listed):
+            print('compiling', len(listed))
+            pattern = '(^|.*\.)({0})'.format('|'.join(listed))
+            setattr(self, 'pattern', re.compile(pattern))
 
     def count(self):
         active = 0

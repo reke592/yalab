@@ -2,6 +2,7 @@ import os
 import sqlite3
 import time
 
+
 def create_connection(path, create=False):
     _conn = None
     db_exist_before = os.path.exists(path)
@@ -79,23 +80,32 @@ def db_schema():
         _blocking_per_client,
         _tmp_blocking_per_client,
         _clients_online,
-        _def_blacklist_trig_aft.format('UPDATE', 'NEW.domain', 'NEW.is_enabled'),
-        _def_blacklist_trig_aft.format('INSERT', 'NEW.domain', 'NEW.is_enabled'),
+        _def_blacklist_trig_aft.format(
+            'UPDATE', 'NEW.domain', 'NEW.is_enabled'),
+        _def_blacklist_trig_aft.format(
+            'INSERT', 'NEW.domain', 'NEW.is_enabled'),
         _def_blacklist_trig_aft.format('DELETE', 'OLD.domain', 'False'),
-        _per_client_trig_aft.format('UPDATE', 'NEW.fk_client', 'NEW.domain', 'NEW.is_enabled'),
-        _per_client_trig_aft.format('INSERT', 'NEW.fk_client', 'NEW.domain', 'NEW.is_enabled'),
-        _per_client_trig_aft.format('DELETE', 'OLD.fk_client', 'OLD.domain', 'False')
+        _per_client_trig_aft.format(
+            'UPDATE', 'NEW.fk_client', 'NEW.domain', 'NEW.is_enabled'),
+        _per_client_trig_aft.format(
+            'INSERT', 'NEW.fk_client', 'NEW.domain', 'NEW.is_enabled'),
+        _per_client_trig_aft.format(
+            'DELETE', 'OLD.fk_client', 'OLD.domain', 'False')
     ]
 
 # create db
+
+
 def init_schema():
     with conn:
         cursor = conn.cursor()
         for query in db_schema():
             cursor.execute(query)
 
+
 def is_connected():
     return type(conn) is not type(None)
+
 
 def disconnect():
     print('closing database connection')
@@ -109,6 +119,8 @@ def disconnect():
         return 1
 
 # ----------- DB TRANSACTIONS
+
+
 def show_clients():
     with conn:
         cursor = conn.cursor()
@@ -116,6 +128,8 @@ def show_clients():
         return cursor.execute(q).fetchall()
 
 # fetch last updated records
+
+
 def get_last_update():
     with conn:
         cursor = conn.cursor()
@@ -126,7 +140,18 @@ def get_last_update():
             cursor.execute(q2).fetchall()
         ]
 
+# fetch default blacklist
+
+
+def get_default_list():
+    with conn:
+        cursor = conn.cursor()
+        q = 'SELECT rowid, domain, is_enabled FROM _blacklist_default'
+        return cursor.execute(q).fetchall()
+
 # remove applied updates
+
+
 def _done_updates(tbl, rowid=[]):
     try:
         with conn:
@@ -141,15 +166,18 @@ def _done_updates(tbl, rowid=[]):
         print('something went wrong when updating the database on done_updates')
         print('Exception:', e)
 
+
 def done_update_blacklist_default(rowid=[]):
     _done_updates('_blacklist_default', rowid)
+
 
 def done_update_blocking_per_client(rowid=[]):
     _done_updates('_blocking_per_client', rowid)
 
 # ------------- DB
+
+
 def init(path, create=False):
     global conn
     conn = create_connection(path, create)
-    init_schema() # always create db schema if not exist
-
+    init_schema()  # always create db schema if not exist
