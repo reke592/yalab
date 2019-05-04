@@ -10,7 +10,6 @@ def fetchDefaultList():
     default_list = yadb.get_default_list()
     if len(default_list):
         applyUpdates(default_list)
-    threading.Event.clear(EVENT_FETCH_UPDATES)
 
 
 def fetchUpdates():
@@ -20,11 +19,12 @@ def fetchUpdates():
         default_list, per_user = yadb.get_last_update()
         if len(default_list):
             applyUpdates(default_list)
-        threading.Event.clear(EVENT_FETCH_UPDATES)
+            print('done applying updates...')
 
 
 def applyUpdates(data=[]):
     try:
+        threading.Event.clear(EVENT_FETCH_UPDATES)
         threading.Event.set(EVENT_APPLY_UPDATES)
         print('acquiring lock')
         lock.acquire()
@@ -33,7 +33,7 @@ def applyUpdates(data=[]):
         blacklist.compile()
         lock.release()
         print('released lock')
-        threading.Event.clear(EVENT_APPLY_UPDATES)
+        # threading.Event.clear(EVENT_APPLY_UPDATES)
     except Exception as e:
         print(e)
     finally:

@@ -9,6 +9,7 @@ def init():
     global DNS_PORT
     global DNS_FORWARDER
     global DNS_HOST
+    global DNS_TIMEOUT
     global EVENT_FETCH_UPDATES
     global EVENT_APPLY_UPDATES
     global EVENT_STOP_BLACKLISTD_SERVICE
@@ -27,3 +28,4 @@ def init():
     DNS_PORT = 53
     DNS_FORWARDER = '192.168.43.1'
     DNS_HOST = '127.0.0.1'
+    DNS_TIMEOUT = 2

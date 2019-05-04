@@ -17,6 +17,8 @@ class RegexBlocking(Blacklist):
             print('compiling', len(listed))
             pattern = '(^|.*\.)({0})'.format('|'.join(listed))
             setattr(self, 'pattern', re.compile(pattern))
+        else:  # blacklist is empty
+            setattr(self, 'pattern', None)
 
     def count(self):
         active = 0
@@ -30,6 +32,8 @@ class RegexBlocking(Blacklist):
         try:
             result = getattr(self, 'pattern').match(domain)
             return result
+        except AttributeError:  # means blacklist is empty
+            return False
         except Exception as e:
             print('something went wrong while testing pattern:', e)
             print('Query has been blocked')
