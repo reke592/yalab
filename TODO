@@ -1,35 +1,7 @@
-create class
-    * Blacklist
-    * DNSLocalResolver
-
-create services
-    * dnsprox
-    * blacklistd
-
-Thread Events:
-    FETCH_DB_UPDATES
-    APPLY_DB_UPDATES
-
-Thread Flow:
-    __main__ ----> create lock ----> start dnsprox(lock)
-                   init globals      start blacklistd(lock)
-
-dnsprox:
-    service start ---> use globals.blacklist ---> loop:
-                                                    if threading.Event.is_set(APPLY_DB_UPDATES)
-                                                        # [?] sleep until DNS record is expired on client
-                                                        time.sleep(TTL)
-                                                    else:
-                                                        # run domain filter
-
-blacklistd:
-    service start ---> use globals.blacklist ---> loop:
-                                                    if threading.Event.is_set(FETCH_DB_UPDATES):
-                                                        lock.acquire
-                                                        # let records = db_updates
-                                                        if len(records):
-                                                            blacklist.update(records)
-                                                            threading.Event.set(APPLY_DB_UPDATES)
-                                                        threading.Event.clear(FETCH_DB_UPDATES)
-                                                        lock.release
-                                                    
+create dns proxy service:
+    configuration format:
+        IP  hostname
+    regex blocking:
+        hostname1
+        hostname2
+        hostname3
