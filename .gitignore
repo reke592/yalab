@@ -2,5 +2,5 @@
 *.conf
 __pycache__
 tmp/
-services/keys
-services/data
+services/keys/
+services/data/
