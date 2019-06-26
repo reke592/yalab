@@ -133,7 +133,7 @@ def main():
                 szBuff = args.buffer,
                 timeout = args.timeout,
                 master_ip = args.master_ip,
-                master_port = args.master_port
+                master_port = args.master_port or defaults.MASTER_TCP_PORT
             )
             # YalabDNS Server
             dns_server = yalabdns.Server()
