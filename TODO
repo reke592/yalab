@@ -1,4 +1,37 @@
-create dns proxy service:
+TODO:
+implement Symmetric encryption
+use multi-threading for yalab TCP,UDP and DNS socket services
+
+--------------------------------------------------------------
+# ao 06-16-2019 : Asymmetric encryption for socket connection
+client
+    can listen to UDP multicast
+server
+    can multicast via UDP socket
+socket connections
+    use bytestream structure @see yconst
+    use private_key for ymaster
+    use public_key for yclient
+
+# ao 05-30-2019
+created ysecret
+    key management, signing, verification, encryption, decryption
+
+creating Client
+creating Master
+
+## ao 05-26-2019
+fixed / created yalabdns options
+    --update update the configuration file only the options specified in command line options
+    --run to start the service
+
+removed:
+    configure method
+    save option
+
+
+## ao 05-19-2019
+created dns proxy service:
     configuration format:
         IP  hostname
     regex blocking:
