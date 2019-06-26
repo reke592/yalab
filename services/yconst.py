@@ -170,4 +170,3 @@ class EventHandlerBase(object):
             raise Exception('not implemented event', 'on_' + event)
         else:
             return fn(payload, addr, state, lock)
-        

@@ -21,6 +21,9 @@ import logging
 import threading
 import socket
 import sys
+import subprocess
+import platform
+from yconst import defaults as _Y
 from dnslib import server, RCODE, RR, A, DNSRecord
 try:
     import cPickle as pickle
@@ -38,8 +41,28 @@ def setup_logger(name, log_file=None):
         handler.setFormatter(formatter)
         logger.addHandler(handler)
 
-setup_logger('YalabDNS')
 
+def get_default_gw():
+    logger.debug('find default gateway.')
+    system = platform.system()
+    try:
+        if system == 'Windows':
+            out = subprocess.check_output(['ipconfig']).decode('utf_8')
+            gw = re.search(r'(default.*:)(.*)', out.lower())
+            gw = gw.group(2).strip() if gw is not None else ''
+        else:
+            raise Exception('%s platform is not yet supported by yalabdns.get_default_gw. Please specify the forwarder using "--forwarder=x.x.x.x" option.' % system)
+    except Exception as e:
+        logger.error(e)
+        return None
+    else:
+        if len(gw.split('.')) == 4:
+            return gw
+        else:
+            None
+
+
+setup_logger('YalabDNS')
 
 class Interceptor:
     # return:
@@ -130,8 +153,8 @@ class RegexInterceptor(Interceptor):
         # else: test the qname
         if expr.match(qname):
             if getattr(self, 'block'):
-                res.header.rcode = RCODE.NXDOMAIN
-                # res.add_answer(RR(qname, ttl=60, rdata=A('0.0.0.0')))
+                # res.header.rcode = RCODE.NXDOMAIN
+                res.add_answer(RR(qname, ttl=60, rdata=A('0.0.0.0')))
                 # skip the remaining interceptors
                 # we return done() because we intercept the response
                 return done()  # = True
@@ -202,7 +225,7 @@ class Resolver:
 
 # TODO: convert def main() to class
 class Server(threading.Thread):
-    def __init__(self, address='127.0.0.1', forwarder=None, port=53, timeout=5):
+    def __init__(self, address='127.0.0.1', forwarder=None, port=53, timeout=3):
         super(Server, self).__init__()
         self.alive = threading.Event()
         self.lock = threading.Lock()
@@ -225,17 +248,28 @@ class Server(threading.Thread):
     def try_get_network_gw(self):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-                dummy = ('255.255.255.0', 0)
+                dummy = (_Y.MULTICAST_GROUP, _Y.UDP_PORT)
                 s.connect(dummy)
-                MY_NETWORK = s.getsockname()[0].split('.')[:-1]
-                return '.'.join(MY_NETWORK) + '.1'
-        except:
+                IP = s.getsockname()[0]
+                print(IP)
+        except Exception as e:
+            logger.debug(e)
             return None
+        else:
+            # Windows will return the loopback if not connected to network
+            if IP == '127.0.0.1':
+                return None
+            else:
+                MY_NETWORK = IP.split('.')[:-1]
+                return '.'.join(MY_NETWORK) + '.1'
 
     def run(self):
         self.proxy = Proxy(self.interceptors)
         if not self.forwarder:
-            logger.info('Waiting for internet connection')
+            logger.info('No configured forwarder. try get default gateway.')
+            self.forwarder = get_default_gw()
+        if not self.forwarder:
+            logger.info('Waiting for network connection, will assume that network node in .1 is a gateway interface.')
             # hold self.dns_server
             while not self.forwarder and self.alive.is_set():
                 self.forwarder = self.try_get_network_gw()
@@ -245,7 +279,7 @@ class Server(threading.Thread):
         self.dns_server = server.DNSServer(self.resolver, address=self.address, port=self.port)
         self.dns_server.start_thread()
         if self.dns_server.isAlive() and self.alive.is_set():
-            logger.info('DNS Server running')
+            logger.info('DNS Server running. forwarder: %s' % self.forwarder)
         while self.alive.is_set():
             # watch for Threading events here..
             time.sleep(1)
@@ -257,4 +291,3 @@ class Server(threading.Thread):
             logger.info('DNS Server stopped')
         if not self.is_alive():
             logger.info('YalabDNS thread stopped')
-

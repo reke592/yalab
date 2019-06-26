@@ -184,7 +184,7 @@ class Server(threading.Thread):
 
     def _configure_udp_socket(self):
         try:
-            SERV_ADDR = ('', self.udp_port)
+            SERV_ADDR = ('127.0.0.1', self.udp_port)
             GROUP = socket.inet_aton(self.multicast_group)
             M_REQ = struct.pack('4sL', GROUP, socket.INADDR_ANY)
             self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -203,7 +203,7 @@ class Server(threading.Thread):
 
     def _configure_tcp_socket(self):
         try:
-            SERV_ADDR = ('', self.tcp_port)
+            SERV_ADDR = ('127.0.0.1', self.tcp_port)
             self.tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.tcp_socket.bind(SERV_ADDR)
             self.tcp_socket.listen(1)
@@ -283,12 +283,12 @@ class Server(threading.Thread):
         self.alive.clear()
         # send some data to stop UDP socket waiting
         if self.udp_socket:
-            self.udp_socket.sendto(b'', ('', self.udp_port))
+            self.udp_socket.sendto(b'', ('127.0.0.1', self.udp_port))
             self.udp_socket.close()
         # connect to stop TCP socket waiting
         if self.tcp_socket:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.connect(('', self.tcp_port))
+                s.connect(('127.0.0.1', self.tcp_port))
             self.tcp_socket.close()
         threading.Thread.join(self, timeout)
         if not self.is_alive():
@@ -299,5 +299,3 @@ class Server(threading.Thread):
         _G.LOCK.acquire()
         _G.E_REQUIRE_LIST_UPDATE.clear()
         _G.LOCK.release()
-
-

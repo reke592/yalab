@@ -198,7 +198,8 @@ class Server(threading.Thread):
     def _configure_tcp_socket(self):
         SERV_ADDR = ('', self.port)
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+#       self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.socket.bind(SERV_ADDR)
         self.socket.listen(self.backlog)
         logger.debug('TCP server configured to listen on port %d' % self.port)
@@ -223,10 +224,8 @@ class Server(threading.Thread):
         logger.debug('stopping TCP server.')
         self.alive.clear()
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.connect(('', self.port))
+            s.connect(('127.0.0.1', self.port))
         self.socket.close()
         threading.Thread.join(self, timeout)
         if not self.is_alive():
             logger.debug('reached target TCP server stopped.')
-
-

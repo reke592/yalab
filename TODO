@@ -1,6 +1,22 @@
 TODO:
-implement Symmetric encryption
-use multi-threading for yalab TCP,UDP and DNS socket services
+
+--------------------------------------------------------------
+# ao 06-26-2019 : socket server theads
+client
+    Server thread
+    TCP listen
+    UDP listen
+
+master
+    Server thread
+    TCP listen
+
+yalabdns
+    Server thread
+    dnslib.server
+
+yalabsvc
+    Main thread
 
 --------------------------------------------------------------
 # ao 06-16-2019 : Asymmetric encryption for socket connection
