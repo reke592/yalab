@@ -5,13 +5,15 @@ import re
 import sys
 import socket
 import time
+import platform
+import uuid
+import getpass
 import ysecret
 import yglobal
 import ymaster as master
 import yclient as client
 import yalabdns
 from yconst import defaults
-from getpass import getpass
 
 def main():
     parser = argparse.ArgumentParser(prog='yalabsvc',
@@ -51,6 +53,8 @@ def main():
     parser.add_argument('--timeout', type=int, default=10,
                         help='set socket connection timeout. default 10s')
 
+    parser.add_argument('--forwarder', type=str, help='set client dns forwarder')
+
     serve_type = parser.add_mutually_exclusive_group()
 
     serve_type.add_argument('--master', action='store_true',
@@ -80,18 +84,26 @@ def main():
     # TODO: add to passwd dictionary, dump data to passwd.dat, data MUST be encrypted using AES256
     # passphrase = host MAC processed by an algorithm
     if args.key_generate:
-        password = getpass('Enter password for %s:' % args.key_generate)
-        ysecret.create_keys(
-            directory=defaults.DIR_KEYS,
-            name=args.key_generate,
-            password=password or ''
-        )
-        if password:
-            #TODO: create algo to serialize password
-            print('created new encrypted private key: %s' % args.key_generate)
-            pass
-        else:
-            print('createed non-encrypted private key: %s' % args.key_generate)
+        try:
+            p = platform.system()
+            m = uuid.getnode()
+            u = getpass.getuser()
+            print(p,m,u)
+            password = getpass.getpass('Enter password for %s:' % args.key_generate)
+            ysecret.create_keys(
+                directory=defaults.DIR_KEYS,
+                name=args.key_generate,
+                password=password or ''
+            )
+            if password:
+                #TODO: create algo to serialize password
+                print('created new encrypted private key: %s' % args.key_generate)
+                pass
+            else:
+                print('createed non-encrypted private key: %s' % args.key_generate)
+        except KeyboardInterrupt:
+            print('\ncancelled by user')
+            exit()
 
 
     if args.key_import:
@@ -109,6 +121,7 @@ def main():
         if not args.key:
             raise Exception('Error: Yalab Master requires a private key.')
         else:
+            # YMaster
             key_file = os.path.join(defaults.DIR_KEYS, args.key + '_private.pem')
             ysecret.load_private_key(key_file)
             server = master.Server(
@@ -125,6 +138,12 @@ def main():
         if not os.path.exists(key_file):
             raise Exception('Error: Yalab Client requires a public key. use --key-import PUBLIC_KEY_FILE')
         else:
+            if not args.forwarder:
+                while not yalabdns.get_default_gw():
+                    print('waiting for network')
+                    time.sleep(3)
+
+            # YClient
             ysecret.load_public_key(key_file)
             server = client.Server(
                 tcp_port = args.port_tcp or defaults.TCP_PORT,
@@ -135,7 +154,7 @@ def main():
                 master_ip = args.master_ip,
                 master_port = args.master_port or defaults.MASTER_TCP_PORT
             )
-            # YalabDNS Server
+            # YalabDNS
             dns_server = yalabdns.Server()
             if not os.path.exists('./data/intercept'):
                 os.makedirs('./data/intercept')

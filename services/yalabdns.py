@@ -46,21 +46,22 @@ def get_default_gw():
     logger.debug('find default gateway.')
     system = platform.system()
     try:
+        ip_pattern = r'(?:\d{1,3}\.){3}(\d{1,3})'
         if system == 'Windows':
             out = subprocess.check_output(['ipconfig']).decode('utf_8')
-            gw = re.search(r'(default.*:)(.*)', out.lower())
-            gw = gw.group(2).strip() if gw is not None else ''
+            gw_str = re.search(r'(default.*:)(.*)', out.lower()).group()
+            #gw = gw.group(2).strip() if gw is not None else ''
+        elif system == 'Linux':
+            out = subprocess.check_output(['ip', 'route']).decode('utf_8')
+            gw_str = out
         else:
             raise Exception('%s platform is not yet supported by yalabdns.get_default_gw. Please specify the forwarder using "--forwarder=x.x.x.x" option.' % system)
     except Exception as e:
         logger.error(e)
         return None
     else:
-        if len(gw.split('.')) == 4:
-            return gw
-        else:
-            None
-
+        ip = re.search(ip_pattern, gw_str)
+        return ip.group() if ip else None
 
 setup_logger('YalabDNS')
 
@@ -126,8 +127,9 @@ class RegexInterceptor(Interceptor):
         hosts = {}
         with open(file_path, 'r') as f:
             # remove doubles
-            for i in f.readlines():
-                hosts[i.replace('\n', '')] = block
+            for entry in f.readlines():
+                if len(entry) - 1:
+                    hosts[entry.replace('\n', '')] = block
 
             # create pattern
             pattern = '(^|.*\.)({0})'.format('|'.join(hosts.keys()))
@@ -153,7 +155,7 @@ class RegexInterceptor(Interceptor):
         # else: test the qname
         if expr.match(qname):
             if getattr(self, 'block'):
-                # res.header.rcode = RCODE.NXDOMAIN
+                res.header.rcode = RCODE.NXDOMAIN
                 res.add_answer(RR(qname, ttl=60, rdata=A('0.0.0.0')))
                 # skip the remaining interceptors
                 # we return done() because we intercept the response
