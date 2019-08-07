@@ -37,6 +37,7 @@ class ClientUDPServer(threading.Thread):
         if self._atexit:
             print('executing atexit')
             self._atexit()
+        self._gateway.join() 
         self.alive.clear()
         self._socket.sendto(b'', self._servaddr)
         self._socket.close()
@@ -118,6 +119,7 @@ class ClientTCPServer(threading.Thread):
         if self._atexit:
             print('executing atexit')
             self._atexit()
+        self._gateway.join()
         self.alive.clear()
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect(self._servaddr)

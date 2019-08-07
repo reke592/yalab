@@ -12,7 +12,6 @@ multicast = '224.5.24.92'
 gw = YalabMasterGateway('keys/sample_private.pem')
 
 def handle_DSDP(data):
-    print(data)
     return (events.ACK, tcp_port.to_bytes(2, byteorder='big')) 
 
 def handle_SHUTDOWN(data):

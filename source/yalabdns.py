@@ -3,9 +3,9 @@
 #
 #    YALAB (You allow and Block) DNS proxy to allow, block DNS query.
 #
-#        + HostFileInterceptor, using a host file to resolve qname
 #        + RegexInterceptor, using a list of hostnames to forward or block the request
 #
+#        - HostFileInterceptor, using a host file to resolve qname
 #        - DomainInterceptor, will redirect the request to DC when qname matches the realm.
 #
 #    project status: Experimental
@@ -123,6 +123,9 @@ class RegexInterceptor(Interceptor):
         if not os.path.exists(file_path):
             with open(file_path, 'w') as f:
                 pass
+        self.load(file_path)
+    
+    def load(file_path):
         hosts = {}
         with open(file_path, 'r') as f:
             # remove doubles
@@ -246,44 +249,18 @@ class Server(threading.Thread):
         last = len(self.interceptors) 
         self.interceptors.insert(priority if type(priority) is int else last, interceptor)
 
-    def try_get_network_gw(self):
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-                dummy = (_Y.MULTICAST_GROUP, _Y.UDP_PORT)
-                s.connect(dummy)
-                IP = s.getsockname()[0]
-                print(IP)
-        except Exception as e:
-            logger.debug(e)
-            return None
-        else:
-            # Windows will return the loopback if not connected to network
-            if IP == '127.0.0.1':
-                return None
-            else:
-                MY_NETWORK = IP.split('.')[:-1]
-                return '.'.join(MY_NETWORK) + '.1'
-
     def run(self):
         self.proxy = Proxy(self.interceptors)
         if not self.forwarder:
             logger.info('No configured forwarder. DNS upstream set to default network gateway.')
             self.forwarder = get_default_gw()
-# handled by __main__ in yalabsvc.py            
-#        if not self.forwarder:
-#            logger.info('Waiting for network connection, will assume that network node in .1 is a gateway interface.')
-#            # hold self.dns_server
-#            while not self.forwarder and self.alive.is_set():
-#                self.forwarder = self.try_get_network_gw()
-#                if not self.forwarder:
-#                    time.sleep(2)
         self.resolver = Resolver(self.proxy, self.forwarder, self.timeout)
         self.dns_server = server.DNSServer(self.resolver, address=self.address, port=self.port)
         self.dns_server.start_thread()
         if self.dns_server.isAlive() and self.alive.is_set():
             logger.info('DNS Server running. forwarder: %s' % self.forwarder)
         while self.alive.is_set():
-            # watch for Threading events here..
+            # entries for Threading events here..
             time.sleep(1)
 
     def join(self, timeout=None):
