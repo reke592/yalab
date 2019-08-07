@@ -43,7 +43,6 @@ def setup_logger(name, log_file=None):
 
 
 def get_default_gw():
-    logger.debug('find default gateway.')
     system = platform.system()
     try:
         ip_pattern = r'(?:\d{1,3}\.){3}(\d{1,3})'
@@ -268,15 +267,16 @@ class Server(threading.Thread):
     def run(self):
         self.proxy = Proxy(self.interceptors)
         if not self.forwarder:
-            logger.info('No configured forwarder. try get default gateway.')
+            logger.info('No configured forwarder. DNS upstream set to default network gateway.')
             self.forwarder = get_default_gw()
-        if not self.forwarder:
-            logger.info('Waiting for network connection, will assume that network node in .1 is a gateway interface.')
-            # hold self.dns_server
-            while not self.forwarder and self.alive.is_set():
-                self.forwarder = self.try_get_network_gw()
-                if not self.forwarder:
-                    time.sleep(2)
+# handled by __main__ in yalabsvc.py            
+#        if not self.forwarder:
+#            logger.info('Waiting for network connection, will assume that network node in .1 is a gateway interface.')
+#            # hold self.dns_server
+#            while not self.forwarder and self.alive.is_set():
+#                self.forwarder = self.try_get_network_gw()
+#                if not self.forwarder:
+#                    time.sleep(2)
         self.resolver = Resolver(self.proxy, self.forwarder, self.timeout)
         self.dns_server = server.DNSServer(self.resolver, address=self.address, port=self.port)
         self.dns_server.start_thread()
@@ -293,3 +293,4 @@ class Server(threading.Thread):
             logger.info('DNS Server stopped')
         if not self.is_alive():
             logger.info('YalabDNS thread stopped')
+

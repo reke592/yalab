@@ -1,7 +1,10 @@
 #
 # ~/yalab/services/yclient.py
 #
-# TODO: serialize DNS blacklist for yalabdns startup
+# TODO:
+#   1 serialize DNS blacklist for yalabdns startup
+#   2 create agent dict for sucessful handshake
+#   3 require a proper handshake for TCP socket transaction
 #
 from yconst import defaults as _Y, CL_PACK, CL_UNPACK, SO_EVENT_PACK, SO_EVENT_UNPACK, EventHandlerBase
 from cryptography.fernet import Fernet
@@ -54,7 +57,7 @@ class UDPController(EventHandlerBase):
         # access server state
         lock.acquire()
         PORT = state['TCP_PORT']
-        KEY = state['SYM_KEY']
+        KEY = state['SYM_KEY']      # obsolete
         # update state master address
         state['MASTER_ADDR'] = (MASTER_IP, MASTER_PORT)
         lock.release()
@@ -79,7 +82,8 @@ def udp_socket_listen(sock, szBuff, controller, alive):
             if alive.is_set():
                 logger.debug('UDP socket received %d bytes from %s:%d' % (len(data), addr[0], addr[1]))
                 if data: # process data, run controller.handle
-                    sig, message = CL_UNPACK(data)
+                    agent, sig, message = CL_UNPACK(data)
+                    logger.debug('UDP socket connected agent: %s on %s:%d' % (agent, addr[0], addr[1]))
                     try:
                         ysecret.verify(message, sig)
                     except:
@@ -100,6 +104,33 @@ def udp_socket_listen(sock, szBuff, controller, alive):
     logger.debug('UDP socket stopped.')
 
 
+def tcp_socket_worker(conn, addr, szBuff, main_thread_alive, controller):
+    key = None
+    while main_thread_alive.is_set():
+        data = conn.recv(szBuff)
+        agent, sig, message = CL_UNPACK(data)
+        logger.debug('TCP socket received %d bytes from %s:%d' % (len(data), addr[0], addr[1]))
+        try:
+            ysecret.verify(message, sig)
+            if key:
+                message = Fernet(key).decrypt(message)
+            event, payload = SO_EVENT_UNPACK(message)
+        except:
+            logger.debug('Invalid messaged signature from %s:%d.' % addr)
+        else:
+            reply = controller.handle(event, payload, addr)
+            if not reply:
+                break
+            else:
+                data = SO_EVENT_PACK(reply)
+                key = Fernet.generate_key()
+                enc_key = ysecret.encrypt(key)
+                enc_message = Fernet(key).encrypt(data)
+                conn.send(CL_PACK(enc_key, enc_message))
+    conn.close()
+    logger.debug('TCP socket %s:%d connection closed.' % addr)
+
+
 def tcp_socket_listen(sock, szBuff, controller, alive, connection_timeout, state, lock):
     while alive.is_set():
         try:
@@ -110,38 +141,41 @@ def tcp_socket_listen(sock, szBuff, controller, alive, connection_timeout, state
             logger.debug('Exception on thread tcp_socket_listen: %s' % e)
         else:
             if alive.is_set():
+                worker = threading.Thread(target=tcp_socket_worker, args=(conn, addr, szBuff, alive, controller))
+                worker.start()
                 # get Client SYM_KEY
                 # this key is being fetched by master on events: master_udp.on_ack or master_tcp.on_connect 
-                lock.acquire()
-                key = state['SYM_KEY']
-                lock.release()
-                while True:
-                    data = conn.recv(szBuff)
-                    sig, message = CL_UNPACK(data)
-                    logger.debug('TCP socket received %d bytes from %s:%d' % (len(data), addr[0], addr[1]))
-                    try:
-                        ysecret.verify(message, sig)
-                        message = Fernet(key).decrypt(message)
-                    except:
-                        logger.debug('Invalid message from %s:%d.' % addr)
-                        break # close connection
-                    else:
-                        event, payload = SO_EVENT_UNPACK(message)
-                        reply = controller.handle(event, payload)
-                        if not reply:
-                            break
-                        else:
-                            key = Fernet.generate_key()
-                            encrypted_message = Fernet(key).encrypt(SO_EVENT_PACK(reply))
-                            encrypted_key = ysecret.encrypt(key)
-                            conn.send(CL_PACK(encrypted_key, encrypted_message))
+#                lock.acquire()
+#                key = state['SYM_KEY']
+#                agents = state['AGENTS']
+#                lock.release()
+#                while True:
+#                    data = conn.recv(szBuff)
+#                    agent, sig, message = CL_UNPACK(data)
+#                    logger.debug('TCP socket received %d bytes from %s:%d' % (len(data), addr[0], addr[1]))
+#                    try:
+#                        ysecret.verify(message, sig)
+#                        message = Fernet(key).decrypt(message)
+#                    except:
+#                        logger.debug('Invalid message from %s:%d.' % addr)
+#                        break # close connection
+#                    else:
+#                        event, payload = SO_EVENT_UNPACK(message)
+#                        reply = controller.handle(event, payload)
+#                        if not reply:
+#                            break
+#                        else:
+#                            key = Fernet.generate_key()
+#                            encrypted_message = Fernet(key).encrypt(SO_EVENT_PACK(reply))
+#                            encrypted_key = ysecret.encrypt(key)
+#                            conn.send(CL_PACK(encrypted_key, encrypted_message))
                 # after polling        
-                conn.close()
+#                conn.close()
                 # update Client SYM_KEY
-                lock.acquire()
-                state['SYM_KEY'] = key
-                lock.release()
-                logger.debug('TCP socket %s:%d connection closed.' % addr)
+#                lock.acquire()
+#                state['SYM_KEY'] = key
+#                lock.release()
+#                logger.debug('TCP socket %s:%d connection closed.' % addr)
             else:
                 logger.debug('stop TCP socket listen.')
                 break
@@ -176,7 +210,8 @@ class Server(threading.Thread):
             'UDP_PORT': self.udp_port,
             'MULTICAST_GROUP': self.multicast_group,
             'SYM_KEY': Fernet.generate_key(),
-            'MASTER_ADDR': master_addr 
+            'MASTER_ADDR': master_addr,
+            'AGENTS': {}
         }
         self.lock = threading.Lock()
         self.tcp_controller = TCPController(self.state, self.lock)
@@ -252,7 +287,7 @@ class Server(threading.Thread):
                         break
                     else:
                         try:
-                            sig, message = CL_UNPACK(data)
+                            agent, sig, message = CL_UNPACK(data)
                             ysecret.verify(message, sig)
                             message = f.decrypt(message)
                         except Exception as e:

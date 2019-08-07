@@ -78,6 +78,19 @@ class _Const():
     def SEPARATOR():
         return ':'
 
+    @constant
+    def MASTER_SERVER_AGENT():
+        return b'ysvr'
+
+    @constant
+    def MASTER_BIN_AGENT():
+        return b'ybin'
+
+    # name of agent, connecting to yclient
+    @constant
+    def AGENT_NAME_LEN():
+        return 4 
+
     # Yalab MAX_LEN for socket event_name
     # default 8
     @constant
@@ -120,9 +133,12 @@ def SO_EVENT_UNPACK(message : bytes):
 
 
 # YMaster pack before sending to client socket
-def M_PACK(sig, encrypted_stream):
-    fmt = '256s%ds' % len(encrypted_stream)
-    return struct.pack(fmt, sig, encrypted_stream)
+# include 4s agent name
+def M_PACK(agent, sig, encrypted_stream):
+    fmt = '4s256s%ds' % len(encrypted_stream)
+    if agent not in [ defaults.MASTER_BIN_AGENT, defaults.MASTER_SERVER_AGENT]:
+        raise ValueError('Invalid agent')
+    return struct.pack(fmt, agent, sig, encrypted_stream)
 
 
 # Ymaster unpack cipher subject for decryption

@@ -1,7 +1,9 @@
 #
 # ~/yalab/services/ymaster.py
 #
-# TODO: serialize Server state for Master CLI
+# TODO:
+# 1 include agent name when using M_PACK
+# 2 ALWAYS initialize TCP socket transaction with a Handshake, no need to store the client sym_key in a dict.
 #
 from cryptography.fernet import Fernet
 from yconst import defaults as _Y, EventHandlerBase, SO_EVENT_PACK, SO_EVENT_UNPACK, M_PACK, M_UNPACK
@@ -16,6 +18,7 @@ import time
 import sys
 
 formatter = logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s')
+AGENT = _Y.MASTER_SERVER_AGENT
 
 def setup_logger(name, log_file=None):
     global logger
@@ -71,7 +74,7 @@ class TCPController(EventHandlerBase):
 # pack the message reply using SO_EVENT_PACK
 # encrypt the message reply using client symmetric key
 # sign the message reply using the private_key(reply, prehashed=True)
-# pack the reply using M_PACK(sig, reply)
+# pack the reply using M_PACK(AGENT,sig, reply)
 def tcp_socket_transaction(conn, addr, szBuff, controller):
     IP, PORT = addr
     logger.debug('Started transaction %s:%d.' % (IP, PORT))
@@ -98,7 +101,7 @@ def tcp_socket_transaction(conn, addr, szBuff, controller):
             # else
             encrypted_reply = f.encrypt(SO_EVENT_PACK(reply))
             sig = ysecret.sign(encrypted_reply, prehashed=True)
-            conn.send(M_PACK(sig, encrypted_reply))
+            conn.send(M_PACK(AGENT,sig, encrypted_reply))
     conn.close()
     logger.debug('End transaction %s:%d.' % (IP, PORT))
 
@@ -143,7 +146,7 @@ def udp_socket_polling(sock, szBuff, controller):
             # else
             encrypted_reply = f.encrypt(SO_EVENT_PACK(reply))
             sig = ysecret.sign(encrypted_reply, prehashed=True)
-            conn.send(M_PACK(sig, encrpyted_reply))
+            conn.send(M_PACK(AGENT,sig, encrpyted_reply))
     sock.close()
     logger.debug('Stopped UDP socket polling.')
 
@@ -187,7 +190,7 @@ class Server(threading.Thread):
                 payload = self.port.to_bytes(2, byteorder='big')
                 message = SO_EVENT_PACK((event, payload))
                 sig = ysecret.sign(message, prehashed=True)
-                s.sendto(M_PACK(sig, message), self.multicast_addr)
+                s.sendto(M_PACK(AGENT,sig, message), self.multicast_addr)
                 worker = threading.Thread(target=udp_socket_polling, args=(s, self.szBuff, self.udp_controller))
                 worker.start()
             except socket.timeout:

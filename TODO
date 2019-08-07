@@ -1,4 +1,46 @@
-TODO:
+TODO: "Cleanup messy codes, make the project structure more maintainable"
+    client:
+        udp-ping: send data on udp multicast group (interval 3s)
+	on-udp-receive: use payload PORT + addr[0] of the sender iff signature is valid and NOT already paired
+			close the UDP socket
+			**open tcp-socket
+	tcp-connect: send sym_key (encrypted using public key) + Client identity (encrypted by sym_key)
+			// client identity [ IP, MAC, TCP_PORT ]
+			close the TCP socket
+	on-tcp-events: emit(event, payload) iff encryption and signature is valid
+	
+
+    server:
+	**open-udp
+	**open-tcp
+        on-boot: listen to udp multicast group
+        on-udp-accept: send ACK, payload: TCP PORT and signature
+	on-tcp-connect: use sym_key and Client identity
+	tcp-events: create thread workers for each client socket
+		    encrypt the message using the client sym_key
+		    sign the message
+
+
+    create yalab/bin
+	- keys				-> list all names of private key files created on the current machine
+	- create key NAME		-> create a pair of private and public key prefixed by NAME
+	- use KEY 			-> will create/update a file that contains the current selected private key
+
+	Following binaries can affect the clients who uses the public pair of the selected private key:
+	- block OPTION VALUE 		-> will block the VALUE on all Clients. OPTIONS: pattern | host
+	- allow PATTERN			-> will allow domain qname pattern on all Clients
+	- redirect HOSTNAME TARGET_IP4 	-> all qname that match the HOSTNAME will resolve to RR(TARGET_IP4)
+	- client list 			-> list all clients that use the public_key of the selected GROUP
+	- client ID OPTIONS VALUE,... 	-> will block or allow VALUE,... on target client ID. OPTIONS: block | allow
+
+--------------------------------------------------------------
+# ao 07-08-2019 : updates
+ysecret
+    private key will be usable only by the specific user on the machine it was created
+yalabsvc
+    will wait for network connection before doing anything
+yalabdns
+    removed the part of waiting for network, already handled by yalabsvc
 
 --------------------------------------------------------------
 # ao 06-26-2019 : socket server theads

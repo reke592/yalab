@@ -7,13 +7,13 @@ from os import path
 cwd = path.dirname(__file__) + '%s'
 
 ext_modules = [
-    Extension("yalabsvc", [cwd % "services/yalabsvc.py"]),
-    Extension("yalabdns", [cwd % "services/yalabdns.py"]),
-    Extension("ymaster", [cwd % "services/ymaster.py"]),
-    Extension("yclient", [cwd % "services/yclient.py"]),
-    Extension("yconst", [cwd % "services/yconst.py"]),
-    Extension("yglobal", [cwd % "services/yglobal.py"]),
-    Extension("ysecret", [cwd % "services/ysecret.py"])
+    Extension("yalabsvc", [cwd % "source/yalabsvc.py"]),
+    Extension("yalabdns", [cwd % "source/yalabdns.py"]),
+    Extension("ymaster", [cwd % "source/ymaster.py"]),
+    Extension("yclient", [cwd % "source/yclient.py"]),
+    Extension("yconst", [cwd % "source/yconst.py"]),
+    Extension("yglobal", [cwd % "source/yglobal.py"]),
+    Extension("ysecret", [cwd % "source/ysecret.py"])
 ]
 
 setup(

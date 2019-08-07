@@ -1,4 +1,9 @@
-# Yalab service
+# 
+# ./yalab/services/yalabsvc.py
+#
+# TODO:
+# 1 - dump args to yalabsvc.conf when running with --master option
+# 2 - make sure the machine has network connection before doing anything
 import argparse
 import os
 import re
@@ -14,8 +19,12 @@ import ymaster as master
 import yclient as client
 import yalabdns
 from yconst import defaults
+try:
+    import cPickle as pickle
+except:
+    import pickle
 
-def main():
+def _parse_args(): 
     parser = argparse.ArgumentParser(prog='yalabsvc',
                                      description='YALAB service for client-server connection.')
 
@@ -61,8 +70,17 @@ def main():
                             help='run as Master, can control client DNS blocking.')
     serve_type.add_argument('--client', action='store_true',
                             help='run as Client, block everything declared by master.')
+    
+    return parser.parse_args()
 
-    args = parser.parse_args()
+
+def _WAIT_FOR_NETWORK(interval=1):
+    print('waiting for network')
+    while not yalabdns.get_default_gw():
+        time.sleep(interval)
+
+
+def main(args):
     _SERVICES = []
 
     if not os.path.exists(defaults.DIR_KEYS):
@@ -81,29 +99,11 @@ def main():
                 print(key[0:-12])   # _private.pem = 12 chars
 
 
-    # TODO: add to passwd dictionary, dump data to passwd.dat, data MUST be encrypted using AES256
-    # passphrase = host MAC processed by an algorithm
     if args.key_generate:
-        try:
-            p = platform.system()
-            m = uuid.getnode()
-            u = getpass.getuser()
-            print(p,m,u)
-            password = getpass.getpass('Enter password for %s:' % args.key_generate)
-            ysecret.create_keys(
-                directory=defaults.DIR_KEYS,
-                name=args.key_generate,
-                password=password or ''
-            )
-            if password:
-                #TODO: create algo to serialize password
-                print('created new encrypted private key: %s' % args.key_generate)
-                pass
-            else:
-                print('createed non-encrypted private key: %s' % args.key_generate)
-        except KeyboardInterrupt:
-            print('\ncancelled by user')
-            exit()
+        ysecret.create_keys(
+            directory=defaults.DIR_KEYS,
+            name=args.key_generate
+        )
 
 
     if args.key_import:
@@ -138,11 +138,6 @@ def main():
         if not os.path.exists(key_file):
             raise Exception('Error: Yalab Client requires a public key. use --key-import PUBLIC_KEY_FILE')
         else:
-            if not args.forwarder:
-                while not yalabdns.get_default_gw():
-                    print('waiting for network')
-                    time.sleep(3)
-
             # YClient
             ysecret.load_public_key(key_file)
             server = client.Server(
@@ -176,6 +171,25 @@ def main():
             logger.error(e)
             exit()
 
+
 if __name__ == '__main__':
-    yglobal.init()
-    main()
+    try:
+        args = _parse_args()
+        # 1
+        if args.master:
+            with open('yalabsvc.conf', 'w') as f:
+                for k,v in args._get_kwargs():
+                    if k == 'port_tcp' and v == None:
+                        v = defaults.MASTER_TCP_PORT if args.master else defaults.TCP_PORT
+                    f.write('%s=%s\n' % (k,v))
+                f.write('user=%s\n' % getpass.getuser())
+        # 2
+        if args.run:
+            _WAIT_FOR_NETWORK()
+    except KeyboardInterrupt:
+        exit()
+    except Exception as e:
+        print(e)
+    else:
+        yglobal.init()
+        main(args)
