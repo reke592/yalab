@@ -1,33 +1,31 @@
 #
 # ~/yalab/services/ysecret.py
 #
-# TODO:
-# 1: make the private key usable only by the current user and system it was created
-#
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa, padding, utils
 from cryptography.hazmat.primitives import serialization, hashes
-import getpass
 import os
-import platform
-import uuid
 
+# for sockify to encrypt/decrypt data using RSA
+# see contracts.py
 DEFAULT_ALGORITHM = hashes.SHA256()
 
-def _sys_info():
-    return ';'.join([hex(uuid.getnode()), platform.system(), getpass.getuser()])
 
-
-def create_keys(directory=os.path.dirname(__file__), name: str = ''):
+def create_keys(directory=os.path.dirname(__file__), name: str = 'yalab', password: str = ''):
     private_key = rsa.generate_private_key(
         public_exponent=65537,
         key_size=2048,
         backend=default_backend()
     )
 
-    # 1
-    encrypt_algo = serialization.BestAvailableEncryption(bytes(_sys_info(), 'utf-8'))
     public_key = private_key.public_key()
+    encrypt_algo = serialization.NoEncryption()
+
+    if len(password):
+
+        encrypt_algo = serialization.BestAvailableEncryption(
+            bytes(password, 'utf-8')
+        )
 
     pem = private_key.private_bytes(
         encoding=serialization.Encoding.PEM,
@@ -69,16 +67,20 @@ def load_public_key(file_path: str):
         _public_key = public_key
 
 
-def load_private_key(file_path: str):
+def load_private_key(file_path: str, password: str = ''):
     try:
         private_key = None
+        passwd = None
         if not os.path.exists(file_path):
             raise ValueError('file not found %s' % file_path)
         else:
+            if len(password):
+                passwd = bytes(password, 'utf-8')
+
             with open(file_path, 'rb') as key_file:
                 private_key = serialization.load_pem_private_key(
                     data=key_file.read(),
-                    password = bytes(_sys_info(), 'utf_8'), # 1
+                    password=passwd,
                     backend=default_backend()
                 )
     except Exception as e:
@@ -91,10 +93,8 @@ def load_private_key(file_path: str):
         _private_key = private_key
 
 
-def sign(data, prehashed=True):
+def sign(data, prehashed=False):
     global _private_key
-    if not _private_key:
-        raise ValueError('Private key not loaded.')
     sig = None
     message = bytes(data, 'utf-8') if not type(data) is bytes else data
     if prehashed:  # for large data
@@ -126,10 +126,8 @@ def sign(data, prehashed=True):
     return sig
 
 
-def verify(data, sig, prehashed=True, enc='utf-8'):
+def verify(data, sig, prehashed=False, enc='utf-8'):
     global _public_key
-    if not _public_key:
-        raise ValueError('Public key not loaded.')
     if not sig:
         raise ValueError('unable to verify message, missing signature.')
 
@@ -166,8 +164,6 @@ def verify(data, sig, prehashed=True, enc='utf-8'):
 
 def encrypt(msg, enc='utf-8'):
     global _public_key
-    if not _public_key:
-        raise ValueError('Public key not loaded.')
     payload = bytes(str(msg), enc) if type(msg) is not bytes else msg
     ciphertext = _public_key.encrypt(
         payload,
@@ -182,8 +178,6 @@ def encrypt(msg, enc='utf-8'):
 
 def decrypt(ciphertext):
     global _private_key
-    if not _private_key:
-        raise ValueError('Private key not loaded.')
     plaintext = _private_key.decrypt(
         ciphertext,
         padding=padding.OAEP(
@@ -194,3 +188,27 @@ def decrypt(ciphertext):
     )
     return plaintext
 
+
+# # create_keys('other', 'password')
+# load_public_key('./other_public.pem')
+# load_private_key('./other_private.pem', password='password')
+
+# # master
+# message = 'Hi'
+# sig = sign(message)
+
+# # client-side
+# try:
+#     verify(message, sig)
+#     reply = 'Hello'
+#     cipher = encrypt(reply)
+# except Exception as e:
+#     print('Invalid signature.')
+
+# # master
+# try:
+#     recv = cipher
+#     plain = decrypt(recv)
+#     print(plain)
+# except Exception as e:
+#     print(e)

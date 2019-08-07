@@ -94,29 +94,29 @@ class DomainInterceptor(Interceptor):
             return False
 
 
-class HostFileInterceptor(Interceptor):
-    # Hostfile format
-    # IP    HOSTNAME
-    def __init__(self, file_path):
-        if not os.path.exists(file_path):
-            with open(file_path, 'w') as f:
-                pass
-        self.hosts = {}
-        with open(file_path, 'r') as f:
-            for i in f.readlines():
-                r = i.replace('\t', ' ').split(' ')
-                resolv = r[0]  # ipaddr
-                name = r[-1].strip() + '.'  # sub.dom.
-                self.hosts[name] = resolv
-        logger.info('Hostfile records: %d' % len(self.hosts.keys()))
-
-    def test(self, qname, res, done):
-        data = self.hosts.get(qname)
-        if data:
-            res.add_answer(RR(qname, ttl=60, rdata=A(data)))
-            return done()
-        else:
-            return False
+#class HostFileInterceptor(Interceptor):
+#    # Hostfile format
+#    # IP    HOSTNAME
+#    def __init__(self, file_path):
+#        if not os.path.exists(file_path):
+#            with open(file_path, 'w') as f:
+#                pass
+#        self.hosts = {}
+#        with open(file_path, 'r') as f:
+#            for i in f.readlines():
+#                r = i.replace('\t', ' ').split(' ')
+#                resolv = r[0]  # ipaddr
+#                name = r[-1].strip() + '.'  # sub.dom.
+#                self.hosts[name] = resolv
+#        logger.info('Hostfile records: %d' % len(self.hosts.keys()))
+#
+#    def test(self, qname, res, done):
+#        data = self.hosts.get(qname)
+#        if data:
+#            res.add_answer(RR(qname, ttl=60, rdata=A(data)))
+#            return done()
+#        else:
+#            return False
 
 
 class RegexInterceptor(Interceptor):

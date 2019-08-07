@@ -84,26 +84,10 @@ def main():
     # TODO: add to passwd dictionary, dump data to passwd.dat, data MUST be encrypted using AES256
     # passphrase = host MAC processed by an algorithm
     if args.key_generate:
-        try:
-            p = platform.system()
-            m = uuid.getnode()
-            u = getpass.getuser()
-            print(p,m,u)
-            password = getpass.getpass('Enter password for %s:' % args.key_generate)
-            ysecret.create_keys(
-                directory=defaults.DIR_KEYS,
-                name=args.key_generate,
-                password=password or ''
-            )
-            if password:
-                #TODO: create algo to serialize password
-                print('created new encrypted private key: %s' % args.key_generate)
-                pass
-            else:
-                print('createed non-encrypted private key: %s' % args.key_generate)
-        except KeyboardInterrupt:
-            print('\ncancelled by user')
-            exit()
+        ysecret.create_keys(
+            directory=defaults.DIR_KEYS,
+            name=args.key_generate
+        )
 
 
     if args.key_import:
@@ -160,7 +144,6 @@ def main():
                 os.makedirs('./data/intercept')
             dns_server.add_interceptor(yalabdns.RegexInterceptor('./data/intercept/allow.list', block=False), priority=0)
             dns_server.add_interceptor(yalabdns.RegexInterceptor('./data/intercept/deny.list'))
-            dns_server.add_interceptor(yalabdns.HostFileInterceptor('./data/intercept/hostfile'), priority=1)
             _SERVICES.append(server)
             _SERVICES.append(dns_server)
 
