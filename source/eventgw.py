@@ -4,13 +4,14 @@
 # TODO:
 #
 import os
+import re
 import secret
 import socket
 import struct
+import time
 import threading
 from cryptography.fernet import Fernet
 from yalab import SocketEventGateway
-
 
 # Transaction flow
 #   client:
@@ -71,6 +72,13 @@ def pack(payload, key_sig: bytes):
     fmt = packet_format % len(payload)
     return struct.pack(fmt, payload, key_sig)
 
+handshake_format = '>1H%ds256s'
+def pack_handshake(tcp_port, identity, reply_token):
+    return struct.pack(handshake_format % len(identity), tcp_port, identity, reply_token)
+
+def unpack_handshake(raw):
+    return struct.unpack(handshake_format % (len(raw) - 258), raw)
+
 def event_id(fn):
     def fget(self):
         #return fn().to_bytes(2, byteorder='big')
@@ -83,25 +91,35 @@ def event_id(fn):
 
 
 class Events(object):
+    # [ not yet implemented ] emitted by master, sent to client TCP : in response to HANDSHAKE request
     @event_id
     def OK_DONE():
         return 0
 
+    # emitted by clients, sent to master UDP
     @event_id
     def DSDP():
         return 1
 
+    # emitted by master, sent to client UDP : in response to DSDP
     @event_id
     def ACK():
         return 2
 
+    # [ not yet implemented ] emitted by clients, sent to master : to initiate eliptic curve
     @event_id
     def HANDSHAKE():
         return 3
 
+    # emitted by master, broadcast to clients TCP
     @event_id
     def SERV_SHUTDOWN():
-        return 999 
+        return 5 
+
+    # emitted by client, sent to master TCP
+    @event_id
+    def CLIENT_RESTART():
+        return 6
 
     @event_id
     def BLOCK():
@@ -117,84 +135,4 @@ class Events(object):
 
 # initialize for import
 events = Events()
-
-class YalabClientGateway(SocketEventGateway):
-    def __init__(self, key_file: str = None):
-        super(YalabClientGateway, self).__init__()
-        if not  os.path.exists(key_file):
-            raise ValueError("Key file not exist")
-        else:
-            # postcondition: may raise Exception
-            secret.load_public_key(key_file)
-            self._key = Fernet.generate_key()
-
-    def on_receive(self, data, addr):
-        try:
-            payload, signature = unpack(data)
-            secret.verify(payload, signature)
-            payload = Fernet(self._key).decrypt(payload)
-            # unpack payload structure
-            event, data = unpack_payload(payload)
-        except Exception as e: # dont emit
-            print('something went wrong. %s' % e or 'Invalid payload')
-            return (None, None)
-        else:
-            return (event, data)
-
-    def on_reply(self, data, addr):
-        self._key = Fernet.generate_key()
-        payload = pack_payload(data[0], data[1])
-        enc_payload = Fernet(self._key).encrypt(payload)
-        enc_key = secret.encrypt(self._key)
-        return pack(enc_payload, enc_key)
-
-
-class YalabMasterGateway(SocketEventGateway):
-    def __init__(self, key_file: str = None):
-        super(YalabMasterGateway, self).__init__()
-        if not os.path.exists(key_file):
-            raise ValueError("Private Key not exist")
-        else:
-            self._clients = {}
-            # postcondition: may raise Exception
-            secret.load_private_key(key_file)
-
-    def broadcast(self, event, data):
-        print('broadcast')
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            for IP in self._clients.keys():
-                PORT = self._clients[IP]['tcp']
-                print('sending broadcast to %s:%d' % (IP, PORT))
-                if PORT:
-                    key = self._clients[IP]['key']
-                    payload = pack_payload(event, data)
-                    enc_payload = Fernet(key).encrypt(payload)
-                    sig = secret.sign(enc_payload)
-                    s.connect((IP, PORT))
-                    s.send(pack(enc_payload, sig))
-
-    def on_receive(self, data, addr):
-        try:
-            enc_payload, enc_key = unpack(data)
-            key = secret.decrypt(enc_key)
-            payload = Fernet(key).decrypt(enc_payload)
-            event, data = unpack_payload(payload)
-        except Exception as e: #dont emit
-            print('something went wrong. %s' % e or 'Invalid encryption')
-            return (None, None)
-        else:
-            IP, PORT = addr 
-            self._clients.setdefault(IP, {})
-            self._clients[IP]['key'] = key
-            if event == events.DSDP:
-                self._clients[IP]['tcp'] = int.from_bytes(data, byteorder='big')
-            return (event, (data, IP, key))
-
-    def on_reply(self, data, addr):
-        IP, PORT = addr
-        key = self._clients[IP]['key']
-        payload = pack_payload(data[0], data[1])
-        enc_payload = Fernet(key).encrypt(payload)
-        sig = secret.sign(enc_payload)
-        return pack(enc_payload, sig)
-
+ 

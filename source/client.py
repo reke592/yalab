@@ -12,19 +12,25 @@ import threading
 
 
 class ClientUDPServer(threading.Thread):
-    def __init__(self, port: int = 0, mgrp: str = None, address: str = None, timeout: int = 3, gatewayImpl: SocketEventGateway = None):
+    def __init__(self, address: str = None, timeout: int = 3, gatewayImpl: SocketEventGateway = None):
+        if not gatewayImpl:
+            raise ValueError('ClientUDPServer requires a SocketEventGateway instance')
         super(ClientUDPServer, self).__init__()
+        self._gateway = gatewayImpl
         self.address = address
-        self.port = port
-        self.mgrp = mgrp
+        self.port = self._gateway.udp_port
+        self.mgrp = self._gateway.multicast_addr[0]
         self.alive = threading.Event()
         self.alive.set()
-        self._gateway = gatewayImpl
         self.connection_timeout = timeout
         self._atexit = None
+        self._gateway = gatewayImpl
 
-    def on(self, event: str, fn):
+    def on(self, event, fn):
         self._gateway.on(event, fn)
+
+    def emit(self, event, payload):
+        self._gateway.emit(event, payload)
 
     def atexit(self, cb):
         T = type(cb).__name__
@@ -37,8 +43,10 @@ class ClientUDPServer(threading.Thread):
         if self._atexit:
             print('executing atexit')
             self._atexit()
-        self._gateway.join() 
+        # stop accepting request
         self.alive.clear()
+        # wait for queued process
+        self._gateway.join()
         self._socket.sendto(b'', self._servaddr)
         self._socket.close()
         threading.Thread.join(self, timeout)
@@ -56,23 +64,27 @@ class ClientUDPServer(threading.Thread):
             self._socket = s
             print('UDP server started, listening on multicast %s:%d.' % (self.mgrp, self.port))
             while self.alive.is_set():
-                print('waiting to receive data')
+                print('UDP waiting to receive data')
                 data, addr = s.recvfrom(1024)
+                print('received %d bytes on UDP from %s:%d' % (len(data), addr[0], addr[1]))
                 if data:
+                    # to remove: must utilize the thread pool
                     worker = threading.Thread(target=self._gateway.process, args=(s, data, addr))
                     worker.start() 
                
 
 class ClientTCPServer(threading.Thread):
-    def __init__(self, port: int = 0, address: str = '', backlog:int = 1, timeout:int = 3, gatewayImpl: SocketEventGateway = None):
+    def __init__(self, address: str = '', backlog:int = 1, timeout:int = 3, gatewayImpl: SocketEventGateway = None):
+        if not gatewayImpl:
+            raise ValueError('ClientTCPServer requires a SocketEventGateway instance')
         super(ClientTCPServer, self).__init__()
-        self.port = port
+        self._gateway = gatewayImpl
+        self.port = self._gateway.tcp_port
         self.address = address
         self.connection_timeout = timeout
         self.backlog = backlog
         self.alive = threading.Event()
         self.alive.set()
-        self._gateway = gatewayImpl
         self._atexit = None
 
     def atexit(self, cb):
@@ -82,7 +94,7 @@ class ClientTCPServer(threading.Thread):
         self._atexit = cb
 
     def _worker(self, connection, addr, gateway: SocketEventGateway, timeout):
-        print("accepted socket connection from %s:%d" % addr)
+        print("accepted TCP socket connection from %s:%d" % addr)
         connection.settimeout(timeout)
         try:
             while True:
@@ -91,12 +103,16 @@ class ClientTCPServer(threading.Thread):
                     print("socket connection %s:%d closed. NO_DATA" % addr)
                     break
                 else:
+                    print('received %d bytes from %s:%d' % (len(data), addr[0], addr[1]))
                     gateway.process(connection, data, addr)
         except socket.timeout:
             print("socket connection %s:%d closed. TIMEOUT" % addr)
 
-    def on(self, event: str, fn):
+    def on(self, event, fn):
         self._gateway.on(event, fn)
+
+    def emit(self, event, payload):
+        self._gateway.emit(event, payload)
 
     def run(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -108,9 +124,10 @@ class ClientTCPServer(threading.Thread):
             self._socket = s
             print('TCP server %s:%d started.' % SERV_ADDR)
             while self.alive.is_set():
-                print('waiting to receive data')
+                print('TCP waiting to receive data')
                 con, addr = s.accept()
                 con.settimeout(self.connection_timeout)
+                # to remove: must utilize the thread pool
                 worker = threading.Thread(target=self._worker, args=(con, addr, self._gateway, self.connection_timeout))
                 worker.start()
 
@@ -119,8 +136,10 @@ class ClientTCPServer(threading.Thread):
         if self._atexit:
             print('executing atexit')
             self._atexit()
-        self._gateway.join()
+        # stop accepting request
         self.alive.clear()
+        # finish queued process
+        self._gateway.join()
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect(self._servaddr)
         self._socket.close()

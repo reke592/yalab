@@ -1,47 +1,13 @@
 #
-#  yalab.py
+# yalab.py
+#
+# TODO: change Pubsub emit, include the callback in queue instead of using a bottle-neck callback ._on_finish_result
 #
 from socket import socket
 import threading
 import queue
 import time
-
-#class EventProcess(threading.Thread):
-#    def __init__(self, fn, data, on_finish):
-#        super(EventProcess, self).__init__()
-#        self.fn = fn
-#        self.data = data
-#        self.on_finish = on_finish
-#
-#    def run(self):
-#        result = self.fn(self.data)
-#        if self.on_finish:
-#            self.on_finish(result)
-
-
-#class Pubsub(object):
-#    def __init__(self):
-#        self.__events = {}
-#        self.__on_finish = None
-#
-#    def add_listener(self, event, cb):
-#        T = type(cb).__name__
-#        if T != 'method' and T != 'function' :
-#            raise ValueError('PubSub add_listener callback must be a function')
-#        self.__events.setdefault(event, [])
-#        self.__events[event].append(cb)
-#
-#    def emit(self, event, data):
-#        for listener in self.__events.get(event) or []:
-#            worker = EventProcess(listener, data, self.__on_finish)
-#            worker.start()
-#
-#    def on_finish_result(self, cb):
-#        T = type(cb).__name__
-#        if T != 'method' and T != 'function' :
-#            raise ValueError('PubSub on_finish_result callback must be a method')
-#        self.__on_finish = cb
-
+import re
 
 # params:
 #   idle : int, time offset in seconds before thread go to sleep(1), when queue is empty
@@ -51,6 +17,7 @@ class Pubsub(object):
         self.__events = {}
         self.__on_finish = None
         self.q = queue.Queue()
+        self.lock = threading.Lock()
         self.pool = []
         self.idle_mode = threading.Event()
         self.idle_mode.set()
@@ -75,10 +42,11 @@ class Pubsub(object):
             if self.q.empty():
                 self._sleep()
             # else
-            fn, args = self.q.get()
-            result = fn(args)
-            if self.__on_finish:
-                self.__on_finish(result)
+            listener_fn, args, cb = self.q.get()
+            result = listener_fn(args)
+            if cb:
+                print(result)
+                cb(result)
             self.q.task_done()
 
     def add_listener(self, event, cb):
@@ -88,9 +56,12 @@ class Pubsub(object):
         self.__events.setdefault(event, [])
         self.__events[event].append(cb)
 
-    def emit(self, event, data):
+    def listeners(self, event):
+        return self.__events.get(event) or []
+
+    def emit(self, event, data, cb=None):
         for listener in self.__events.get(event) or []:
-            self.q.put((listener, data))
+            self.q.put((listener, data, cb))
         self.idle_mode.clear()
 
     def on_finish_result(self, cb):
@@ -100,58 +71,73 @@ class Pubsub(object):
         self.__on_finish = cb
 
 
-# UNSUSED
-#def prop(x, doc):
-#    def fget(self):
-#        return getattr(self, x)
-#
-#    def fset(self, value):
-#        setattr(self, x, value)
-#
-#    def fdel(self):
-#        delattr(self, x)
-#
-#    return property(fget, fset, fdel, doc)
-
-
 class SocketEventGateway(object):
-    def __init__(self):
-        self._events = Pubsub() 
-        self._events.on_finish_result(self._on_reply)
+    def __init__(self, worker_ct=1):
+        print('Gateway thread pool: %d' % worker_ct)
+        self.tcp_port = None
+        self.udp_port = None
+        self.dsdp_interval = None
+        self.multicast_addr = None
+        self._events = Pubsub(worker_ct) 
+        self._events.add_listener('__RECEIVED__', self.on_receive)
+        self._events.add_listener('__RESPONSE__', self.on_reply)
+        self._events.add_listener('__SEND_REPLY__', self.on_send)
+        #self._events.on_finish_result(self._on_reply)
 
     def on(self, event: str, fn):
         self._events.add_listener(event, fn)
 
-    def emit(self, event, payload):
-        self._events.emit(event, payload)
+    def emit(self, event, payload, cb=None):
+        self._events.emit(event, payload, cb)
 
     def process(self, connection: socket, data, addr):
         self._connection = connection
         self._endpoint = addr
         self._received = data
-        event, data = self.on_receive(self._received, addr)
-        if event:
-            self._events.emit(event, data)
+        self.emit('__RECEIVED__', (data, addr))
+        #event, data = self.on_receive(self._received, addr)
+        #if event:
+        #    self._events.emit(event, data, self._on_reply)
 
-    def _on_reply(self, data):
-        if data:
-            processed_reply = self.on_reply(data, self._endpoint)
+    def remove_listener(self, event, listener):
+        try:
+            self._events.listeners(event).remove(listener)
+        except:
+            pass 
+
+    def configure(self, **kwargs):
+        tcp = kwargs.get('tcp')
+        udp = kwargs.get('udp')
+        mgrp = kwargs.get('multicast_group')
+        dsdp_i = kwargs.get('dsdp_interval')
+        if type(tcp) is int:
+            self.tcp_port = tcp
+        if type(udp) is int:
+            self.udp_port = udp
+            if re.match(r'(?:\d{1,3}\.){3}(\d{1,3})$', mgrp):
+                self.multicast_addr = (mgrp, udp)
+        if type(dsdp_i) is int or type(dsdp_i) is float:
+            self.dsdp_interval = dsdp_i
+
+    def on_send(self, response):
+        if response:
+            data, addr = response
             try:
-                self._connection.send(processed_reply)
+                self._connection.send(data)
             except OSError:
-                self._connection.sendto(processed_reply, self._endpoint)
+                self._connection.sendto(data, addr)
 
     # wait all queued process to finish
     def join(self):
         self._events.q.join()
 
     # returns tuple (event, data)
-    def on_receive(self, data, addr):
+    def on_receive(self, received):
         print('WARINIG: no override definition for Gateway.on_receive in child class.')
-        return (None, data) 
+        return None 
 
     # returns structured data
-    def on_reply(self, data, addr):
+    def on_reply(self, response):
         print('WARNING: no override definition for Gateway.on_reply in child class.')
-        return data
+        self.emit('__SEND_REPLY__', None) 
 
