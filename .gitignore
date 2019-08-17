@@ -2,9 +2,6 @@
 *.conf
 *.bin
 *.pem
+*.list
 __pycache__
 tmp/
-services/keys/
-services/data/
-source/keys/
-source/data/
