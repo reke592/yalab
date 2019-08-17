@@ -1,6 +1,7 @@
 *.db
 *.conf
 *.bin
+*.pem
 __pycache__
 tmp/
 services/keys/
